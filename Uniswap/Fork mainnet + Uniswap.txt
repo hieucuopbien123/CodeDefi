@@ -1,0 +1,42 @@
+Cách dùng ganache-cli fork mainnet kết hợp truffle, từ đó lấy DAI và giao dịch trên phiên bản mainnet fork hiện tại: 
+PROJECT ID = INFURA_API_KEY = 334b94e6fd54411ea35f426ecaf0099d
+=> install truffle và ganache-cli => edit truffle-config là dùng mạng mainet_fork cần đúng 3 thông số như bth là host, port, network_id với network_id bất kỳ khác các cái đã có thì lấy 999 đi; host và port lấy của ganache thì host hiển nhiên là localhost còn port trên gui là 7545, port ganache trên cli là 8545 => cx chỉ là bảo dùng blockchain network của ganache mà thôi, sau đó ta fork sau
+
+Fork mainnet bằng ganache có lợi là ganache là tool vốn để tạo blockchain phục vụ test development. Khi fork thì state của blockchain có y nguyên như mainnet hiện tại nhưng ta lại unlock được bất cứ account nào ta muốn, làm bất cứ điều gì trên blockchain này như là đang thao tác với mainnet nhưng k ảnh hưởng tới mainnet
+
+ganache-cli --fork https://mainnet.infura.io/v3/$INFURA_API_KEY \
+--unlock $<account muốn unlock> \
+--networkId 999 
+=> là chạy được blockchain mainnet fork, bh dùng truffle project thao tác TT
+
+lấy balance of DAI và chuyển thử DAI từ account này sang account khác => phải chọn account nào trên mainnet có sẵn DAI và address gốc của DAI để viết test
+
+-> npx truffle compile
+-> npx truffle test <link file test> --network mainnet_fork
+
+
+Test hàm swapExactTokenForToken trong uniswap. Chú ý chọn account có DAI để swap lấy WBTC nhưng account đó cũng phải có ETH vì nếu k sẽ k trả đc fee giao dịch. Ta phải unlock account đó.
+Chú ý TH này khác TH trên vì ta tạo ra 1 contract mới và viết code deploy trong migrations và thao tác trên instance của contract đó bên trong gọi hàm swap của contract uniswap chứ ta k gọi trực tiếp contract uniswap cũng được. Nch là ta tùy biến thoải mái về contract, về account unlock, về test muốn gì được nấy
+
+
+Trong uniswap giá cả được tự động tính bằng toán. Trong khi giao dịch trên các sàn khác thì giá cả được thống nhất giữa người mua và người bán
+
+Khi test, nó chạy liên tục từ trên xuống và lưu trạng thái đó vào network. VD ta chạy test 2 lần và trong test viét A gửi cho B 1 DAI => sau khi gọi 2 lần thì A đã gửi B 2 DAI nhé
+
+
+Tình huống: ta có 1000DAI và 0Ether và muốn add liquidity cho uniswap
+Ta sẽ swap 500DAI vào uniswap để nhận về chẳng hạn 4.76Ether thành ra ta còn 500DAI và 4.76Ether thì ta addLiquidity nhưng uniswap lúc này k nhận toàn bộ số coin đó chẳng hạn nó nhận hết DAI r ta còn dư 0.23Ether
+=> Như v k tối ưu, ta cần tạo ra 1 hàm giúp trader optimal one-sided supply rằng có thể addLiquidity chỉ bằng 1 đồng coin với cơ chế như trên nhưng tối ưu là pool nhận hết số coin đó chứ k trả dư lại
+
+Chú ý là x*y=k thì k là hằng số và mỗi khi swap thì tỉ lệ k sẽ thay đổi là phần thưởng phí cho mọi người đó
+Ban đầu: K=A*B
+Về sau: K=(A+(1-f)s)*(B-b)
+Với A,B là token trong pool, s là số tiền tokenA ta cần gửi vào để swap, b là số tokenB ta sẽ nhận về để có đúng tỉ lệ; f là 0.3%
+Tỉ lệ về sau là: (A+s)/(B-b)=(a-s)/b
+Kết quả thì s khoản tokenA ta cần gửi vào để swap = nghiệm pt bậc 2
+=> Viết hẳn contract cho swap one-sided luôn 
+Trên mainnet đã có người làm cái này publish lên r
+
+Flash Swap: borrower vay và trả trong cùng 1 transaction. Họ vay và dùng làm gì đó ngay lập tức và trả lại tiền + lãi trong cùng 1 transaction. VD: 1 borrower vay 100DAI của AAVE với Flash Loans-> đi qua uniswap mua 100 token A-> đi qua Mooniswap để bán 100 token A được 110 DAI-> cuối transaction đó, họ trả 100 DAI cho AAVE và 1 DAI là fee-> borrower lãi 9 DAI => đó là 1 use case họ mua bán dựa trên sự chênh lệch giá của 2 platform khác nhau mà k bỏ ra đồng vốn nào hết.
+Flash Swap giúp tạo sự công bằng vì uniswap bị chênh giá nhiều, trong khi những người nào có coin thì họ mới có thể mua sàn này swap sàn kia để kiếm lời chênh lệch giá. Những người k có token đó thì k kiếm lời được thì bất công. Flash swap giúp giải quyết điều đó rằng bất cứ ai cũng kiếm lời đc.
+Điều đặc biệt là flashswap là miễn phí với điều kiện là người dùng trả lại đúng lượng token vay ban đầu ở cuối giao dịch => code éo miễn phí
